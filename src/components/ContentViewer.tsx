@@ -87,7 +87,15 @@ export const ContentViewer: React.FC<ContentViewerProps> = ({
     if (!container) return;
     const el = container.querySelector(`[data-fragment-id="${selectedFragment.id}"]`);
     if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const margin = containerRect.height * 0.15;
+    const isComfortablyVisible =
+      elRect.top >= containerRect.top + margin && elRect.bottom <= containerRect.bottom - margin;
+    if (isComfortablyVisible) return;
+    const target =
+      container.scrollTop + (elRect.top - containerRect.top) - (containerRect.height - elRect.height) / 2;
+    container.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
   }, [selectedFragment, autoFollow]);
 
   useEffect(() => {

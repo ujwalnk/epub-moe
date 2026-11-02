@@ -13,6 +13,13 @@ const REGION_EPSILON = 0.01; // 10ms tolerance for floating point imprecision
 const VOLUME_KEY = 'waveformVolume';
 const ZOOM_LEVEL_KEY = 'waveformZoom';
 const DEFAULT_VOLUME = 1;
+const SPEED_KEY = 'waveformPlaybackSpeed';
+const DEFAULT_SPEED = 1;
+const MIN_SPEED = 0.25;
+const MAX_SPEED = 4;
+
+const clampSpeed = (value: number) => Math.min(MAX_SPEED, Math.max(MIN_SPEED, value));
+const formatSpeed = (value: number) => String(Math.round(value * 100) / 100);
 
 export type RegionColorStyle = 'modern' | 'classic';
 
@@ -119,6 +126,12 @@ export const WaveformViewer = forwardRef<WaveformViewerHandles, WaveformViewerPr
     return Math.min(1, Math.max(0, stored));
   });
   const lastVolumeRef = useRef<number>(DEFAULT_VOLUME);
+  const [speed, setSpeed] = useState<number>(() => {
+    const stored = parseFloat(localStorage.getItem(SPEED_KEY) ?? '');
+    return Number.isFinite(stored) ? clampSpeed(stored) : DEFAULT_SPEED;
+  });
+  const [speedInput, setSpeedInput] = useState(() => formatSpeed(speed));
+  const speedRef = useRef(speed);
   const audioUrlRef = useRef<string | null>(null);
   const zoomLevelRef = useRef(zoomLevel);
   useEffect(() => {
@@ -149,6 +162,36 @@ export const WaveformViewer = forwardRef<WaveformViewerHandles, WaveformViewerPr
   useEffect(() => {
     wavesurfer.current?.setVolume(volume);
   }, [volume]);
+
+  const applySpeed = useCallback((rate: number) => {
+    const ws = wavesurfer.current;
+    if (!ws) return;
+    const position = ws.getCurrentTime();
+    ws.setPlaybackRate(rate, false);
+    if (ws.getDuration() > 0) ws.setTime(position);
+  }, []);
+
+  useEffect(() => {
+    speedRef.current = speed;
+    applySpeed(speed);
+  }, [speed, applySpeed]);
+
+  const commitSpeed = (raw: string) => {
+    const value = parseFloat(raw);
+    const next = Number.isFinite(value) ? clampSpeed(value) : speedRef.current;
+    setSpeed(next);
+    setSpeedInput(formatSpeed(next));
+    localStorage.setItem(SPEED_KEY, String(next));
+  };
+
+  const handleSpeedInputChange = (raw: string) => {
+    setSpeedInput(raw);
+    const value = parseFloat(raw);
+    if (Number.isFinite(value) && value >= MIN_SPEED && value <= MAX_SPEED) {
+      setSpeed(value);
+      localStorage.setItem(SPEED_KEY, String(value));
+    }
+  };
 
   const handleVolumeChange = (value: number) => {
     setVolume(value);
@@ -242,6 +285,7 @@ export const WaveformViewer = forwardRef<WaveformViewerHandles, WaveformViewerPr
       setIsWaveformLoading(false);
       ws.zoom(zoomLevel); 
       ws.setVolume(volume);
+      ws.setPlaybackRate(speedRef.current, false);
       drawFragments(); 
     });
     ws.on('play', () => setIsPlaying(true)); ws.on('pause', () => setIsPlaying(false)); ws.on('timeupdate', (time) => setCurrentTime(time));
@@ -624,6 +668,27 @@ export const WaveformViewer = forwardRef<WaveformViewerHandles, WaveformViewerPr
             className="volume-slider w-24 cursor-pointer"
             title="Volume"
           />
+          <ToolbarDivider />
+          <label className="flex items-center gap-1.5 text-xs text-gray-400" title="Temporary playback speed for aligning. Does not change the audio in the exported EPUB.">
+            <span>Speed</span>
+            <input
+              type="number"
+              min={MIN_SPEED}
+              max={MAX_SPEED}
+              step="0.05"
+              value={speedInput}
+              onChange={(e) => handleSpeedInputChange(e.target.value)}
+              onBlur={(e) => commitSpeed(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  commitSpeed(e.currentTarget.value);
+                  e.currentTarget.blur();
+                }
+              }}
+              className="w-16 h-7 px-1.5 text-center tabular-nums rounded-md text-xs bg-base border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+            <span>×</span>
+          </label>
         </div>
         <div className="flex items-center">
           <div className="flex items-center gap-1">
